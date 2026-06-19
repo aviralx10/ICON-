@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ICON Casebook Platform
 
-## Getting Started
+A multi-tenant casebook platform for consulting clubs at IIM Bangalore. Built with Next.js, TypeScript, Tailwind CSS, shadcn/ui, and Supabase.
 
-First, run the development server:
+## Features
+
+- Multi-tenant architecture with per-tenant roles
+- Case browsing with full-text search, filtering by category/company/difficulty
+- Role-based access: Student, Editor, Admin, Owner
+- Editor dashboard for case creation and management
+- Mentor directory with Cal.com booking integration
+- Admin panel for member, category, and company management
+- Magic link authentication restricted to @iimb.ac.in emails
+- Row Level Security on all tables
+
+## Setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Copy and configure environment variables:
+
+```bash
+cp .env.local.example .env.local
+# Edit .env.local with your Supabase project credentials
+```
+
+3. Run the database migration (`supabase/migrations/001_initial_schema.sql`) in your Supabase SQL editor.
+
+4. Start the dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Project Structure
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+src/
+  app/
+    auth/           # Login, callback, server actions
+    [tenant]/       # Tenant-scoped: cases, editor, mentors, admin
+  components/       # App shell, case card/grid, filter panel, mentor card
+    ui/             # shadcn/ui primitives
+  hooks/            # use-toast
+  lib/
+    services/       # cases, categories, companies, memberships, mentors, search, usage
+    supabase/       # Browser/server/middleware clients
+  types/            # TypeScript interfaces for all DB tables
+supabase/
+  migrations/       # SQL schema with RLS policies
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Tech Stack
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Next.js (App Router) / TypeScript / Tailwind CSS / shadcn/ui / Supabase / Zod
