@@ -7,6 +7,7 @@ import { createCategory, updateCategory } from "@/lib/services/categories";
 import { createCompany } from "@/lib/services/companies";
 import { updateRole } from "@/lib/services/memberships";
 import { trackEvent } from "@/lib/services/usage";
+import type { ContentType, DifficultyLevel, PlacementSource } from "@/types/database";
 
 export async function createCaseAction(formData: FormData) {
   const supabase = await createClient();
@@ -15,24 +16,33 @@ export async function createCaseAction(formData: FormData) {
 
   const tenantId = formData.get("tenant_id") as string;
   const title = formData.get("title") as string;
-  const description = formData.get("description") as string;
+  const contentKind = (formData.get("content_kind") as string) || "case";
   const categoryId = formData.get("category_id") as string;
   const difficulty = formData.get("difficulty") as string;
-  const sector = formData.get("sector") as string;
+  const isNumerical = formData.get("is_numerical") === "true";
+  const section = formData.get("section") as string;
+  const source = formData.get("source") as string;
+  const prompt = formData.get("prompt") as string;
+  const frameworksStr = formData.get("frameworks") as string;
   const tagsStr = formData.get("tags") as string;
   const status = formData.get("status") as string;
   const companyIdsStr = formData.get("company_ids") as string;
 
+  const frameworks = frameworksStr ? frameworksStr.split(",").map((f) => f.trim()).filter(Boolean) : [];
   const tags = tagsStr ? tagsStr.split(",").map((t) => t.trim()).filter(Boolean) : [];
   const companyIds = companyIdsStr ? companyIdsStr.split(",").filter(Boolean) : [];
 
   const result = await createCase({
     tenant_id: tenantId,
     title,
-    description: description || undefined,
+    content_kind: (contentKind as ContentType) || undefined,
     category_id: categoryId || undefined,
-    difficulty: difficulty || undefined,
-    sector: sector || undefined,
+    difficulty: (difficulty as DifficultyLevel) || undefined,
+    is_numerical: isNumerical,
+    section: section || undefined,
+    source: (source as PlacementSource) || undefined,
+    prompt: prompt || undefined,
+    frameworks,
     tags,
     status: status || "draft",
     created_by: user.id,
@@ -49,24 +59,33 @@ export async function createCaseAction(formData: FormData) {
 export async function updateCaseAction(formData: FormData) {
   const caseId = formData.get("case_id") as string;
   const title = formData.get("title") as string;
-  const description = formData.get("description") as string;
+  const contentKind = (formData.get("content_kind") as string) || "case";
   const categoryId = formData.get("category_id") as string;
   const difficulty = formData.get("difficulty") as string;
-  const sector = formData.get("sector") as string;
+  const isNumerical = formData.get("is_numerical") === "true";
+  const section = formData.get("section") as string;
+  const source = formData.get("source") as string;
+  const prompt = formData.get("prompt") as string;
+  const frameworksStr = formData.get("frameworks") as string;
   const tagsStr = formData.get("tags") as string;
   const status = formData.get("status") as string;
   const companyIdsStr = formData.get("company_ids") as string;
   const tenantSlug = formData.get("tenant_slug") as string;
 
+  const frameworks = frameworksStr ? frameworksStr.split(",").map((f) => f.trim()).filter(Boolean) : [];
   const tags = tagsStr ? tagsStr.split(",").map((t) => t.trim()).filter(Boolean) : [];
   const companyIds = companyIdsStr ? companyIdsStr.split(",").filter(Boolean) : [];
 
   const result = await updateCase(caseId, {
     title,
-    description: description || null,
+    content_kind: contentKind as ContentType,
     category_id: categoryId || null,
-    difficulty: difficulty || null,
-    sector: sector || null,
+    difficulty: (difficulty as DifficultyLevel) || null,
+    is_numerical: isNumerical,
+    section: section || null,
+    source: (source as PlacementSource) || null,
+    prompt: prompt || null,
+    frameworks,
     tags,
     status: status || "draft",
     company_ids: companyIds,

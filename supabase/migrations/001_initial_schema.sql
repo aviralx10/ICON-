@@ -1,262 +1,180 @@
--- Enable extensions
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- =====================================================================
+-- Casebook platform — core schema (Supabase / Postgres)
+-- Migration 0001: tenants, taxonomy, cases, and search
+-- Derived from ICON Casebook 2025-26 (Vol 15a) field structure.
+-- RLS policies live in a separate migration (0002_rls.sql).
+-- =====================================================================
 
--- Tenants
-CREATE TABLE tenants (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  slug TEXT UNIQUE NOT NULL,
-  name TEXT NOT NULL,
-  theme_json JSONB DEFAULT '{}',
-  created_at TIMESTAMPTZ DEFAULT now()
+create extension if not exists pg_trgm;        -- fuzzy / typo-tolerant search
+
+-- ---------- Enums (the controlled vocabularies from the book) ----------
+create type difficulty_level as enum ('easy', 'moderate', 'challenging');
+
+create type content_type as enum (
+  'case',             -- 83 interview cases
+  'guesstimate',      -- 15 guesstimates
+  'industry_report',  -- 20 industry reports
+  'framework'         -- the frameworks section
 );
 
--- Profiles (linked to auth.users)
-CREATE TABLE profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  email TEXT UNIQUE NOT NULL,
-  full_name TEXT,
-  avatar_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+create type entry_status as enum ('draft', 'published', 'retired');
+
+create type placement_source as enum (
+  'final_2023_25',    -- final placements, Batch 2023-25
+  'summer_2024_26'    -- summer placements, Batch 2024-26
 );
 
--- Memberships (per-tenant roles)
-CREATE TABLE memberships (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  role TEXT NOT NULL CHECK (role IN ('student', 'editor', 'admin', 'owner')),
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(tenant_id, profile_id)
+-- ---------- Tenants (ICON, Sigma, … — the reusable skeleton) ----------
+create table tenants (
+  id          uuid primary key default gen_random_uuid(),
+  slug        text unique not null,            -- 'icon', 'sigma'
+  name        text not null,
+  theme_json  jsonb default '{}'::jsonb,        -- logo, colours, category preset
+  created_at  timestamptz not null default now()
 );
 
--- Categories (tenant-scoped)
-CREATE TABLE categories (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  slug TEXT NOT NULL,
-  sort_order INT DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(tenant_id, slug)
+-- ---------- Taxonomy: case TYPE (Pricing, RCA, Growth, Strategy…) ----------
+-- This is the "category" filter. Tenant-scoped so Sigma can define its own.
+create table categories (
+  id         uuid primary key default gen_random_uuid(),
+  tenant_id  uuid not null references tenants(id) on delete cascade,
+  name       text not null,                     -- 'Profitability / RCA', 'Market Entry', 'Pricing', 'Growth', 'M&A'
+  slug       text not null,
+  sort_order int  not null default 0,
+  unique (tenant_id, slug)
 );
 
--- Companies (tenant-scoped)
-CREATE TABLE companies (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  slug TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(tenant_id, slug)
+-- ---------- Taxonomy: FIRM (the LeetCode-style company filter) ----------
+create table companies (
+  id         uuid primary key default gen_random_uuid(),
+  tenant_id  uuid not null references tenants(id) on delete cascade,
+  name       text not null,                     -- 'McKinsey', 'BCG', 'Bain', 'Kearney', 'LEK', 'WWT', 'BCGX', 'Strategy&'
+  slug       text not null,
+  logo_url   text,
+  unique (tenant_id, slug)
 );
 
--- Cases
-CREATE TABLE cases (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  title TEXT NOT NULL,
-  description TEXT,
-  category_id UUID REFERENCES categories(id),
-  difficulty TEXT CHECK (difficulty IN ('easy', 'medium', 'hard')),
-  sector TEXT,
-  tags TEXT[] DEFAULT '{}',
-  file_path TEXT,
-  file_name TEXT,
-  file_type TEXT,
-  extracted_text TEXT,
-  search_vector TSVECTOR,
-  status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('published', 'draft', 'retired')),
-  view_count INT DEFAULT 0,
-  created_by UUID REFERENCES profiles(id),
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
+-- ---------- The cases themselves (one row = one case/guesstimate/report) ----------
+create table cases (
+  id              uuid primary key default gen_random_uuid(),
+  tenant_id       uuid not null references tenants(id) on delete cascade,
+
+  -- identity / ordering (S.No + page in the book)
+  s_no            int,
+  page_start      int,
+
+  -- core metadata (the TOC columns)
+  title           text not null,                            -- 'Particulars' e.g. 'South African FMCG Company'
+  content_kind    content_type not null default 'case',
+  category_id     uuid references categories(id),           -- the case TYPE
+  difficulty      difficulty_level,                         -- easy | moderate | challenging
+  is_numerical    boolean not null default false,           -- the 'N = Numerical' flag
+  section         text,                                     -- 'Best of the Season', etc.
+  source          placement_source,                         -- which placement cycle it came from
+
+  -- content
+  prompt          text,                                     -- opening problem statement
+  transcript      jsonb default '[]'::jsonb,                -- chat-style dialogue, ordered turns:
+                                                            -- [{"turn":1,"speaker":"interviewer","text":"..."},
+                                                            --  {"turn":2,"speaker":"candidate","text":"..."}, ...]
+                                                            -- speaker ∈ {'interviewer','candidate'}
+  frameworks      text[] default '{}',                      -- e.g. {'Profitability tree','Customer journey'}
+  tags            text[] default '{}',                      -- free concepts/sectors
+
+  -- source file (the original PDF/PPT page export, in Supabase Storage)
+  file_path       text,
+  extracted_text  text,                                     -- text pulled from the file for search
+
+  -- search + housekeeping
+  search_vector   tsvector,
+  view_count      int not null default 0,
+  status          entry_status not null default 'published',
+  created_by      uuid,                                      -- profiles(id); FK added with auth migration
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
 );
 
--- Case-Company many-to-many
-CREATE TABLE case_companies (
-  case_id UUID NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
-  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-  PRIMARY KEY (case_id, company_id)
+-- ---------- Case ↔ Company (many-to-many) ----------
+-- The book lists one firm per case, but a question can recur across firms,
+-- so we keep it many-to-many. Powers "all cases asked at Bain" + per-firm counts.
+create table case_companies (
+  case_id     uuid not null references cases(id) on delete cascade,
+  company_id  uuid not null references companies(id) on delete cascade,
+  primary key (case_id, company_id)
 );
 
--- Mentors
-CREATE TABLE mentors (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  calcom_link TEXT,
-  bio TEXT,
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(tenant_id, profile_id)
-);
-
--- Bookings
-CREATE TABLE bookings (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  mentor_id UUID NOT NULL REFERENCES mentors(id) ON DELETE CASCADE,
-  student_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  starts_at TIMESTAMPTZ NOT NULL,
-  ends_at TIMESTAMPTZ NOT NULL,
-  status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled', 'completed')),
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(mentor_id, starts_at)
-);
-
--- Usage events
-CREATE TABLE usage_events (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id),
-  profile_id UUID REFERENCES profiles(id),
-  event_type TEXT NOT NULL,
-  payload JSONB DEFAULT '{}',
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
+-- =====================================================================
 -- Indexes
-CREATE INDEX idx_cases_search ON cases USING GIN(search_vector);
-CREATE INDEX idx_cases_tags ON cases USING GIN(tags);
-CREATE INDEX idx_cases_title_trgm ON cases USING GIN(title gin_trgm_ops);
-CREATE INDEX idx_cases_tenant_category ON cases(tenant_id, category_id);
-CREATE INDEX idx_cases_tenant_status ON cases(tenant_id, status);
-CREATE INDEX idx_case_companies_company ON case_companies(company_id, case_id);
-CREATE INDEX idx_memberships_tenant ON memberships(tenant_id, profile_id);
-CREATE INDEX idx_usage_events_tenant ON usage_events(tenant_id, created_at);
+-- =====================================================================
+create index idx_cases_tenant_category on cases (tenant_id, category_id);
+create index idx_cases_tenant_kind     on cases (tenant_id, content_kind);
+create index idx_cases_difficulty      on cases (tenant_id, difficulty);
+create index idx_cases_search          on cases using gin (search_vector);
+create index idx_cases_tags            on cases using gin (tags);
+create index idx_cases_title_trgm      on cases using gin (title gin_trgm_ops);  -- typo tolerance
+create index idx_case_companies_company on case_companies (company_id, case_id);  -- company filter
 
--- Search vector trigger
-CREATE OR REPLACE FUNCTION update_case_search_vector()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.search_vector :=
-    setweight(to_tsvector('english', COALESCE(NEW.title, '')), 'A') ||
-    setweight(to_tsvector('english', COALESCE(array_to_string(NEW.tags, ' '), '')), 'B') ||
-    setweight(to_tsvector('english', COALESCE(NEW.description, '')), 'C') ||
-    setweight(to_tsvector('english', COALESCE(NEW.extracted_text, '')), 'D');
-  NEW.updated_at := now();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+-- =====================================================================
+-- Full-text search vector (weighted): title > frameworks/tags > prompt > body
+-- A company name is searchable because we fold linked firms into the vector.
+-- =====================================================================
+create or replace function cases_build_search_vector()
+returns trigger language plpgsql as $$
+declare
+  company_names   text;
+  transcript_text text;
+begin
+  select coalesce(string_agg(c.name, ' '), '')
+    into company_names
+    from case_companies cc
+    join companies c on c.id = cc.company_id
+   where cc.case_id = new.id;
 
-CREATE TRIGGER trg_cases_search_vector
-  BEFORE INSERT OR UPDATE ON cases
-  FOR EACH ROW EXECUTE FUNCTION update_case_search_vector();
+  -- flatten the chat turns into one searchable string
+  select coalesce(string_agg(turn->>'text', ' '), '')
+    into transcript_text
+    from jsonb_array_elements(coalesce(new.transcript, '[]'::jsonb)) as turn;
 
--- Profile creation trigger (domain enforcement)
-CREATE OR REPLACE FUNCTION enforce_iimb_domain()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.email NOT LIKE '%@iimb.ac.in' THEN
-    RAISE EXCEPTION 'Only @iimb.ac.in email addresses are allowed';
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+  new.search_vector :=
+      setweight(to_tsvector('english', coalesce(new.title, '')), 'A')
+    || setweight(to_tsvector('english', company_names), 'B')
+    || setweight(to_tsvector('english', array_to_string(new.frameworks, ' ')), 'B')
+    || setweight(to_tsvector('english', array_to_string(new.tags, ' ')), 'B')
+    || setweight(to_tsvector('english', coalesce(new.prompt, '')), 'C')
+    || setweight(to_tsvector('english',
+         transcript_text || ' ' || coalesce(new.extracted_text, '')), 'D');
+  new.updated_at := now();
+  return new;
+end $$;
 
-CREATE TRIGGER trg_enforce_iimb_domain
-  BEFORE INSERT ON profiles
-  FOR EACH ROW EXECUTE FUNCTION enforce_iimb_domain();
+create trigger trg_cases_search
+  before insert or update on cases
+  for each row execute function cases_build_search_vector();
 
--- RLS Policies
-ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE memberships ENABLE ROW LEVEL SECURITY;
-ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE cases ENABLE ROW LEVEL SECURITY;
-ALTER TABLE case_companies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE mentors ENABLE ROW LEVEL SECURITY;
-ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY;
+-- =====================================================================
+-- Seed taxonomy for the ICON tenant (extend freely from the editor UI)
+-- =====================================================================
+insert into tenants (slug, name) values ('icon', 'ICON — Consulting Club, IIMB');
 
--- Tenants: readable by members
-CREATE POLICY tenant_select ON tenants FOR SELECT USING (
-  EXISTS (SELECT 1 FROM memberships WHERE memberships.tenant_id = tenants.id AND memberships.profile_id = auth.uid())
-);
+insert into categories (tenant_id, name, slug, sort_order)
+select id, v.name, v.slug, v.ord from tenants t,
+ (values
+   ('Profitability / RCA', 'profitability-rca', 1),
+   ('Market Entry',        'market-entry',      2),
+   ('Pricing',             'pricing',           3),
+   ('Growth',              'growth',            4),
+   ('Strategy',            'strategy',          5),
+   ('M&A',                 'm-and-a',           6),
+   ('Cost Reduction',      'cost-reduction',    7),
+   ('Guesstimate',         'guesstimate',       8)
+ ) as v(name, slug, ord)
+where t.slug = 'icon';
 
--- Profiles: users can read all profiles, update own
-CREATE POLICY profile_select ON profiles FOR SELECT USING (true);
-CREATE POLICY profile_update ON profiles FOR UPDATE USING (id = auth.uid());
-CREATE POLICY profile_insert ON profiles FOR INSERT WITH CHECK (id = auth.uid());
-
--- Memberships: readable by tenant members
-CREATE POLICY membership_select ON memberships FOR SELECT USING (
-  EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id = memberships.tenant_id AND m.profile_id = auth.uid())
-);
-CREATE POLICY membership_manage ON memberships FOR ALL USING (
-  EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id = memberships.tenant_id AND m.profile_id = auth.uid() AND m.role IN ('admin', 'owner'))
-);
-
--- Categories: readable by tenant members, writable by editors+
-CREATE POLICY category_select ON categories FOR SELECT USING (
-  EXISTS (SELECT 1 FROM memberships WHERE memberships.tenant_id = categories.tenant_id AND memberships.profile_id = auth.uid())
-);
-CREATE POLICY category_manage ON categories FOR ALL USING (
-  EXISTS (SELECT 1 FROM memberships WHERE memberships.tenant_id = categories.tenant_id AND memberships.profile_id = auth.uid() AND role IN ('editor', 'admin', 'owner'))
-);
-
--- Companies: same pattern
-CREATE POLICY company_select ON companies FOR SELECT USING (
-  EXISTS (SELECT 1 FROM memberships WHERE memberships.tenant_id = companies.tenant_id AND memberships.profile_id = auth.uid())
-);
-CREATE POLICY company_manage ON companies FOR ALL USING (
-  EXISTS (SELECT 1 FROM memberships WHERE memberships.tenant_id = companies.tenant_id AND memberships.profile_id = auth.uid() AND role IN ('editor', 'admin', 'owner'))
-);
-
--- Cases: published readable by members, all ops by editors+
-CREATE POLICY case_select ON cases FOR SELECT USING (
-  status = 'published' AND
-  EXISTS (SELECT 1 FROM memberships WHERE memberships.tenant_id = cases.tenant_id AND memberships.profile_id = auth.uid())
-);
-CREATE POLICY case_select_editor ON cases FOR SELECT USING (
-  EXISTS (SELECT 1 FROM memberships WHERE memberships.tenant_id = cases.tenant_id AND memberships.profile_id = auth.uid() AND role IN ('editor', 'admin', 'owner'))
-);
-CREATE POLICY case_insert ON cases FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM memberships WHERE memberships.tenant_id = cases.tenant_id AND memberships.profile_id = auth.uid() AND role IN ('editor', 'admin', 'owner'))
-);
-CREATE POLICY case_update ON cases FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM memberships WHERE memberships.tenant_id = cases.tenant_id AND memberships.profile_id = auth.uid() AND role IN ('editor', 'admin', 'owner'))
-);
-CREATE POLICY case_delete ON cases FOR DELETE USING (
-  EXISTS (SELECT 1 FROM memberships WHERE memberships.tenant_id = cases.tenant_id AND memberships.profile_id = auth.uid() AND role IN ('editor', 'admin', 'owner'))
-);
-
--- Case companies: follow case access
-CREATE POLICY case_company_select ON case_companies FOR SELECT USING (
-  EXISTS (SELECT 1 FROM cases WHERE cases.id = case_companies.case_id)
-);
-CREATE POLICY case_company_manage ON case_companies FOR ALL USING (
-  EXISTS (SELECT 1 FROM cases JOIN memberships ON memberships.tenant_id = cases.tenant_id WHERE cases.id = case_companies.case_id AND memberships.profile_id = auth.uid() AND memberships.role IN ('editor', 'admin', 'owner'))
-);
-
--- Mentors: readable by tenant members
-CREATE POLICY mentor_select ON mentors FOR SELECT USING (
-  EXISTS (SELECT 1 FROM memberships WHERE memberships.tenant_id = mentors.tenant_id AND memberships.profile_id = auth.uid())
-);
-CREATE POLICY mentor_manage ON mentors FOR ALL USING (
-  EXISTS (SELECT 1 FROM memberships WHERE memberships.tenant_id = mentors.tenant_id AND memberships.profile_id = auth.uid() AND role IN ('admin', 'owner'))
-);
-
--- Bookings: student sees own, mentor sees own
-CREATE POLICY booking_select ON bookings FOR SELECT USING (
-  student_id = auth.uid() OR
-  EXISTS (SELECT 1 FROM mentors WHERE mentors.id = bookings.mentor_id AND mentors.profile_id = auth.uid())
-);
-CREATE POLICY booking_insert ON bookings FOR INSERT WITH CHECK (
-  student_id = auth.uid()
-);
-CREATE POLICY booking_update ON bookings FOR UPDATE USING (
-  student_id = auth.uid() OR
-  EXISTS (SELECT 1 FROM mentors WHERE mentors.id = bookings.mentor_id AND mentors.profile_id = auth.uid())
-);
-
--- Usage events: insert by authenticated, select by admins
-CREATE POLICY usage_insert ON usage_events FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
-CREATE POLICY usage_select ON usage_events FOR SELECT USING (
-  EXISTS (SELECT 1 FROM memberships WHERE memberships.tenant_id = usage_events.tenant_id AND memberships.profile_id = auth.uid() AND role IN ('admin', 'owner'))
-);
-
--- Seed ICON tenant
-INSERT INTO tenants (slug, name, theme_json) VALUES (
-  'icon', 'ICON - Consulting Club', '{"primaryColor": "#1e40af", "logo": "/icon-logo.png"}'
-);
+insert into companies (tenant_id, name, slug)
+select id, v.name, v.slug from tenants t,
+ (values
+   ('McKinsey','mckinsey'), ('BCG','bcg'), ('Bain','bain'),
+   ('Kearney','kearney'), ('LEK','lek'), ('WWT','wwt'),
+   ('BCGX','bcgx'), ('Strategy&','strategy-and')
+ ) as v(name, slug)
+where t.slug = 'icon';

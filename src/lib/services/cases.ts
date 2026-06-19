@@ -1,10 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
-import type { Case, CaseWithRelations } from "@/types/database";
+import type { Case, CaseWithRelations, ContentType, DifficultyLevel, PlacementSource, TranscriptTurn } from "@/types/database";
 
 export interface CaseFilters {
   categories?: string[];
   companies?: string[];
   difficulty?: string;
+  content_kind?: string;
   q?: string;
   status?: string;
   sort?: string;
@@ -109,17 +110,22 @@ export async function getCase(id: string): Promise<CaseWithRelations | null> {
 export async function createCase(data: {
   tenant_id: string;
   title: string;
-  description?: string;
+  content_kind?: ContentType;
   category_id?: string;
-  difficulty?: string;
-  sector?: string;
+  difficulty?: DifficultyLevel;
+  is_numerical?: boolean;
+  section?: string;
+  source?: PlacementSource;
+  prompt?: string;
+  transcript?: TranscriptTurn[];
+  frameworks?: string[];
   tags?: string[];
   file_path?: string;
-  file_name?: string;
-  file_type?: string;
   status?: string;
   created_by?: string;
   company_ids?: string[];
+  s_no?: number;
+  page_start?: number;
 }): Promise<Case | null> {
   const supabase = await createClient();
   const { company_ids, ...caseData } = data;
@@ -150,16 +156,21 @@ export async function updateCase(
   id: string,
   data: {
     title?: string;
-    description?: string | null;
+    content_kind?: ContentType;
     category_id?: string | null;
-    difficulty?: string | null;
-    sector?: string | null;
+    difficulty?: DifficultyLevel | null;
+    is_numerical?: boolean;
+    section?: string | null;
+    source?: PlacementSource | null;
+    prompt?: string | null;
+    transcript?: TranscriptTurn[];
+    frameworks?: string[];
     tags?: string[];
     file_path?: string | null;
-    file_name?: string | null;
-    file_type?: string | null;
     status?: string;
     company_ids?: string[];
+    s_no?: number | null;
+    page_start?: number | null;
   }
 ): Promise<Case | null> {
   const supabase = await createClient();

@@ -28,7 +28,6 @@ export interface Category {
   name: string;
   slug: string;
   sort_order: number;
-  created_at: string;
 }
 
 export interface Company {
@@ -36,25 +35,41 @@ export interface Company {
   tenant_id: string;
   name: string;
   slug: string;
-  created_at: string;
+  logo_url: string | null;
+}
+
+export type DifficultyLevel = "easy" | "moderate" | "challenging";
+export type ContentType = "case" | "guesstimate" | "industry_report" | "framework";
+export type EntryStatus = "draft" | "published" | "retired";
+export type PlacementSource = "final_2023_25" | "summer_2024_26";
+
+export interface TranscriptTurn {
+  turn: number;
+  speaker: "interviewer" | "candidate";
+  text: string;
 }
 
 export interface Case {
   id: string;
   tenant_id: string;
+  s_no: number | null;
+  page_start: number | null;
   title: string;
-  description: string | null;
+  content_kind: ContentType;
   category_id: string | null;
-  difficulty: "easy" | "medium" | "hard" | null;
-  sector: string | null;
+  difficulty: DifficultyLevel | null;
+  is_numerical: boolean;
+  section: string | null;
+  source: PlacementSource | null;
+  prompt: string | null;
+  transcript: TranscriptTurn[];
+  frameworks: string[];
   tags: string[];
   file_path: string | null;
-  file_name: string | null;
-  file_type: string | null;
   extracted_text: string | null;
   search_vector: string | null;
-  status: "published" | "draft" | "retired";
   view_count: number;
+  status: EntryStatus;
   created_by: string | null;
   created_at: string;
   updated_at: string;

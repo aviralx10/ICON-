@@ -9,8 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Upload, X } from "lucide-react";
-import { DIFFICULTY_LEVELS, CASE_STATUSES } from "@/lib/constants";
+import { X } from "lucide-react";
+import { DIFFICULTY_LEVELS, CASE_STATUSES, CONTENT_TYPES, PLACEMENT_SOURCES } from "@/lib/constants";
 import { createCaseAction, updateCaseAction } from "@/app/[tenant]/actions";
 import { useToast } from "@/hooks/use-toast";
 import type { Case, Category, Company } from "@/types/database";
@@ -28,16 +28,19 @@ export function CaseForm({ tenantId, tenantSlug, categories, companies, existing
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState(existingCase?.title || "");
-  const [description, setDescription] = useState(existingCase?.description || "");
+  const [contentKind, setContentKind] = useState<string>(existingCase?.content_kind || "case");
   const [categoryId, setCategoryId] = useState(existingCase?.category_id || "");
-  const [difficulty, setDifficulty] = useState(existingCase?.difficulty || "");
-  const [sector, setSector] = useState(existingCase?.sector || "");
+  const [difficulty, setDifficulty] = useState<string>(existingCase?.difficulty || "");
+  const [isNumerical, setIsNumerical] = useState(existingCase?.is_numerical || false);
+  const [section, setSection] = useState(existingCase?.section || "");
+  const [source, setSource] = useState<string>(existingCase?.source || "");
+  const [prompt, setPrompt] = useState(existingCase?.prompt || "");
+  const [frameworks, setFrameworks] = useState(existingCase?.frameworks?.join(", ") || "");
   const [tags, setTags] = useState(existingCase?.tags?.join(", ") || "");
   const [status, setStatus] = useState<string>(existingCase?.status || "draft");
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>(
     existingCase?.companies?.map((c) => c.id) || []
   );
-  const [fileName, setFileName] = useState(existingCase?.file_name || "");
 
   const toggleCompany = (companyId: string) => {
     setSelectedCompanyIds((prev) =>
@@ -53,10 +56,14 @@ export function CaseForm({ tenantId, tenantSlug, categories, companies, existing
     formData.set("tenant_id", tenantId);
     formData.set("tenant_slug", tenantSlug);
     formData.set("title", title);
-    formData.set("description", description);
+    formData.set("content_kind", contentKind);
     formData.set("category_id", categoryId);
     formData.set("difficulty", difficulty);
-    formData.set("sector", sector);
+    formData.set("is_numerical", String(isNumerical));
+    formData.set("section", section);
+    formData.set("source", source);
+    formData.set("prompt", prompt);
+    formData.set("frameworks", frameworks);
     formData.set("tags", tags);
     formData.set("status", status);
     formData.set("company_ids", selectedCompanyIds.join(","));
@@ -93,11 +100,25 @@ export function CaseForm({ tenantId, tenantSlug, categories, companies, existing
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of the case" rows={4} />
+            <Label htmlFor="prompt">Problem Statement</Label>
+            <Textarea id="prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Opening problem statement for the case" rows={4} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Content Type</Label>
+              <Select value={contentKind} onValueChange={setContentKind}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CONTENT_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
               <Label>Category</Label>
               <Select value={categoryId} onValueChange={setCategoryId}>
@@ -111,7 +132,9 @@ export function CaseForm({ tenantId, tenantSlug, categories, companies, existing
                 </SelectContent>
               </Select>
             </div>
+          </div>
 
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Difficulty</Label>
               <Select value={difficulty} onValueChange={setDifficulty}>
@@ -125,11 +148,43 @@ export function CaseForm({ tenantId, tenantSlug, categories, companies, existing
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-2">
+              <Label>Placement Source</Label>
+              <Select value={source} onValueChange={setSource}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select source" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PLACEMENT_SOURCES.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="section">Section</Label>
+              <Input id="section" value={section} onChange={(e) => setSection(e.target.value)} placeholder="e.g., Best of the Season" />
+            </div>
+
+            <div className="flex items-center gap-3 pt-6">
+              <input
+                type="checkbox"
+                id="is_numerical"
+                checked={isNumerical}
+                onChange={(e) => setIsNumerical(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <Label htmlFor="is_numerical">Numerical Case</Label>
+            </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="sector">Sector</Label>
-            <Input id="sector" value={sector} onChange={(e) => setSector(e.target.value)} placeholder="e.g., Technology, Healthcare" />
+            <Label htmlFor="frameworks">Frameworks (comma-separated)</Label>
+            <Input id="frameworks" value={frameworks} onChange={(e) => setFrameworks(e.target.value)} placeholder="e.g., Profitability tree, Customer journey" />
           </div>
 
           <div className="space-y-2">
@@ -157,32 +212,6 @@ export function CaseForm({ tenantId, tenantSlug, categories, companies, existing
               {companies.length === 0 && (
                 <span className="text-sm text-muted-foreground">No companies available. Add some in the admin panel.</span>
               )}
-            </div>
-          </div>
-
-          {/* File Upload Dropzone */}
-          <div className="space-y-2">
-            <Label>Case File</Label>
-            <div className="border-2 border-dashed rounded-lg p-8 text-center hover:border-primary/50 transition-colors cursor-pointer">
-              <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-              {fileName ? (
-                <p className="text-sm font-medium">{fileName}</p>
-              ) : (
-                <>
-                  <p className="text-sm font-medium">Drop a file here or click to upload</p>
-                  <p className="text-xs text-muted-foreground mt-1">PDF, DOCX, PPTX, or XLSX</p>
-                </>
-              )}
-              <input
-                type="file"
-                className="absolute inset-0 opacity-0 cursor-pointer"
-                accept=".pdf,.docx,.pptx,.xlsx"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) setFileName(file.name);
-                }}
-                style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", opacity: 0 }}
-              />
             </div>
           </div>
 
