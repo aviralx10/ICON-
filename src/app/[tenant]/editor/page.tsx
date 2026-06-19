@@ -36,7 +36,7 @@ export default async function EditorPage({ params }: PageProps) {
     .eq("profile_id", user.id)
     .single();
 
-  if (!membership || !["editor", "admin", "owner"].includes(membership.role)) {
+  if (!membership || !["editor", "admin"].includes(membership.role)) {
     redirect(`/${tenantSlug}`);
   }
 

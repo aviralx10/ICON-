@@ -66,16 +66,23 @@ export async function getCases(
     return [];
   }
 
-  // Transform the nested case_companies into a flat companies array
-  return (data || []).map((c) => {
+  let results = (data || []).map((c) => {
     const caseData = c as Record<string, unknown>;
-    const caseCompanies = (caseData.case_companies as Array<{ company: unknown }>) || [];
+    const caseCompanies = (caseData.case_companies as Array<{ company: Record<string, unknown> }>) || [];
     return {
       ...caseData,
       companies: caseCompanies.map((cc) => cc.company),
       case_companies: undefined,
     } as unknown as CaseWithRelations;
   });
+
+  if (filters.companies && filters.companies.length > 0) {
+    results = results.filter((c) =>
+      c.companies?.some((co) => filters.companies!.includes(co.id))
+    );
+  }
+
+  return results;
 }
 
 export async function getCase(id: string): Promise<CaseWithRelations | null> {
@@ -212,12 +219,12 @@ export async function retireCase(id: string): Promise<boolean> {
 }
 
 export async function incrementViewCount(id: string): Promise<void> {
-  const supabase = await createClient();
+  const { createServiceClient } = await import("@/lib/supabase/service");
+  const admin = createServiceClient();
 
-  // Simple increment approach
-  const { data } = await supabase.from("cases").select("view_count").eq("id", id).single();
+  const { data } = await admin.from("cases").select("view_count").eq("id", id).single();
   if (data) {
-    await supabase
+    await admin
       .from("cases")
       .update({ view_count: ((data.view_count as number) || 0) + 1 })
       .eq("id", id);

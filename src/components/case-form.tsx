@@ -13,7 +13,8 @@ import { X } from "lucide-react";
 import { DIFFICULTY_LEVELS, CASE_STATUSES, CONTENT_TYPES, PLACEMENT_SOURCES } from "@/lib/constants";
 import { createCaseAction, updateCaseAction } from "@/app/[tenant]/actions";
 import { useToast } from "@/hooks/use-toast";
-import type { Case, Category, Company } from "@/types/database";
+import { TranscriptEditor } from "@/components/transcript-editor";
+import type { Case, Category, Company, TranscriptTurn } from "@/types/database";
 
 interface CaseFormProps {
   tenantId: string;
@@ -37,6 +38,7 @@ export function CaseForm({ tenantId, tenantSlug, categories, companies, existing
   const [prompt, setPrompt] = useState(existingCase?.prompt || "");
   const [frameworks, setFrameworks] = useState(existingCase?.frameworks?.join(", ") || "");
   const [tags, setTags] = useState(existingCase?.tags?.join(", ") || "");
+  const [transcript, setTranscript] = useState<TranscriptTurn[]>(existingCase?.transcript || []);
   const [status, setStatus] = useState<string>(existingCase?.status || "draft");
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>(
     existingCase?.companies?.map((c) => c.id) || []
@@ -65,6 +67,7 @@ export function CaseForm({ tenantId, tenantSlug, categories, companies, existing
     formData.set("prompt", prompt);
     formData.set("frameworks", frameworks);
     formData.set("tags", tags);
+    formData.set("transcript", JSON.stringify(transcript));
     formData.set("status", status);
     formData.set("company_ids", selectedCompanyIds.join(","));
 
@@ -191,6 +194,8 @@ export function CaseForm({ tenantId, tenantSlug, categories, companies, existing
             <Label htmlFor="tags">Tags (comma-separated)</Label>
             <Input id="tags" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="e.g., revenue growth, market entry, FMCG" />
           </div>
+
+          <TranscriptEditor turns={transcript} onChange={setTranscript} />
 
           <div className="space-y-2">
             <Label>Companies</Label>

@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCase, incrementViewCount } from "@/lib/services/cases";
-import { trackEvent } from "@/lib/services/usage";
-import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -15,17 +13,6 @@ interface PageProps {
 
 export default async function CaseDetailPage({ params }: PageProps) {
   const { tenant: tenantSlug, id } = await params;
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { data: tenant } = await supabase
-    .from("tenants")
-    .select("id")
-    .eq("slug", tenantSlug)
-    .single();
 
   const caseData = await getCase(id);
 
@@ -34,9 +21,6 @@ export default async function CaseDetailPage({ params }: PageProps) {
   }
 
   await incrementViewCount(id);
-  if (user && tenant) {
-    await trackEvent(tenant.id, user.id, "case_view", { case_id: id });
-  }
 
   const difficulty = DIFFICULTY_LEVELS.find((d) => d.value === caseData.difficulty);
 

@@ -19,7 +19,7 @@ export function MentorCard({ mentor }: MentorCardProps) {
       <CardContent className="pt-6">
         <div className="flex flex-col items-center text-center space-y-3">
           <Avatar className="h-16 w-16">
-            <AvatarImage src={profile.avatar_url || undefined} />
+            <AvatarImage />
             <AvatarFallback className="text-lg">{initials}</AvatarFallback>
           </Avatar>
           <div>

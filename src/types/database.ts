@@ -10,7 +10,6 @@ export interface Profile {
   id: string;
   email: string;
   full_name: string | null;
-  avatar_url: string | null;
   created_at: string;
 }
 
@@ -18,8 +17,7 @@ export interface Membership {
   id: string;
   tenant_id: string;
   profile_id: string;
-  role: "student" | "editor" | "admin" | "owner";
-  created_at: string;
+  role: "student" | "editor" | "admin";
 }
 
 export interface Category {
@@ -90,34 +88,14 @@ export interface Mentor {
   created_at: string;
 }
 
-export interface Booking {
-  id: string;
-  tenant_id: string;
-  mentor_id: string;
-  student_id: string;
-  starts_at: string;
-  ends_at: string;
-  status: "confirmed" | "cancelled" | "completed";
-  created_at: string;
-}
-
-export interface UsageEvent {
-  id: string;
-  tenant_id: string;
-  profile_id: string | null;
-  event_type: string;
-  payload: Record<string, unknown>;
-  created_at: string;
+export interface MentorWithProfile extends Mentor {
+  profile: Profile;
 }
 
 export interface CaseWithRelations extends Case {
   category?: Category | null;
   companies?: Company[];
   created_by_profile?: Profile | null;
-}
-
-export interface MentorWithProfile extends Mentor {
-  profile: Profile;
 }
 
 export interface MembershipWithProfile extends Membership {

@@ -31,7 +31,7 @@ export default async function EditCasePage({ params }: PageProps) {
     .eq("profile_id", user.id)
     .single();
 
-  if (!membership || !["editor", "admin", "owner"].includes(membership.role)) {
+  if (!membership || !["editor", "admin"].includes(membership.role)) {
     redirect(`/${tenantSlug}`);
   }
 

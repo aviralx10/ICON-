@@ -26,7 +26,6 @@ export const ROLES = [
   { value: "student", label: "Student" },
   { value: "editor", label: "Editor" },
   { value: "admin", label: "Admin" },
-  { value: "owner", label: "Owner" },
 ] as const;
 
 export const DEFAULT_CATEGORIES = [
