@@ -25,17 +25,22 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-    const formData = new FormData();
-    formData.set("email", email);
+    try {
+      const formData = new FormData();
+      formData.set("email", email);
 
-    const result = await signInWithEmail(formData);
+      const result = await signInWithEmail(formData);
 
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setSuccess(true);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setSuccess(true);
+      }
+    } catch (err) {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
