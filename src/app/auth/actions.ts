@@ -15,27 +15,46 @@ export async function signInWithEmail(formData: FormData) {
     return { error: "Only @iimb.ac.in email addresses are allowed" };
   }
 
-  const supabase = await createClient();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) {
+    return { error: "Server config error: NEXT_PUBLIC_SUPABASE_URL is not set" };
+  }
+
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!anonKey) {
+    return { error: "Server config error: NEXT_PUBLIC_SUPABASE_ANON_KEY is not set" };
+  }
+
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
+  let supabase;
   try {
-    const { error } = await supabase.auth.signInWithOtp({
+    supabase = await createClient();
+  } catch (err) {
+    return { error: `Failed to create Supabase client: ${String(err)}` };
+  }
+
+  try {
+    const result = await supabase.auth.signInWithOtp({
       email,
       options: {
         emailRedirectTo: `${siteUrl}/auth/callback`,
       },
     });
 
-    if (error) {
-      return { error: error.message || error.status?.toString() || JSON.stringify(error) };
+    if (result.error) {
+      return {
+        error: result.error.message
+          || `Auth error (status ${result.error.status}): ${result.error.name}`
+      };
     }
 
     return { success: true };
   } catch (err) {
-    if (err instanceof Error) {
-      return { error: `${err.name}: ${err.message}` };
-    }
-    return { error: `Unexpected error: ${JSON.stringify(err)}` };
+    const details = err instanceof Error
+      ? `${err.name}: ${err.message}`
+      : `(non-Error) keys: ${Object.keys(err as object).join(",")}, str: ${String(err)}`;
+    return { error: `OTP request failed — ${details}` };
   }
 }
 
