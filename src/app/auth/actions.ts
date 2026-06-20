@@ -1,7 +1,6 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { IIMB_EMAIL_DOMAIN } from "@/lib/constants";
 
 export async function signInWithEmail(formData: FormData) {
@@ -16,25 +15,17 @@ export async function signInWithEmail(formData: FormData) {
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!supabaseUrl) {
-    return { error: "Server config error: NEXT_PUBLIC_SUPABASE_URL is not set" };
-  }
-
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!anonKey) {
-    return { error: "Server config error: NEXT_PUBLIC_SUPABASE_ANON_KEY is not set" };
-  }
-
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
-  let supabase;
-  try {
-    supabase = await createClient();
-  } catch (err) {
-    return { error: `Failed to create Supabase client: ${String(err)}` };
+  if (!supabaseUrl || !anonKey) {
+    return { error: "Missing Supabase env vars on server" };
   }
 
   try {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+
     const result = await supabase.auth.signInWithOtp({
       email,
       options: {
@@ -44,21 +35,30 @@ export async function signInWithEmail(formData: FormData) {
 
     if (result.error) {
       return {
-        error: result.error.message
-          || `Auth error (status ${result.error.status}): ${result.error.name}`
+        error: result.error.message || `Status ${result.error.status}`,
       };
     }
 
     return { success: true };
-  } catch (err) {
-    const details = err instanceof Error
-      ? `${err.name}: ${err.message}`
-      : `(non-Error) keys: ${Object.keys(err as object).join(",")}, str: ${String(err)}`;
-    return { error: `OTP request failed — ${details}` };
+  } catch (err: unknown) {
+    let msg = "Unknown error";
+    if (err instanceof Error) {
+      msg = err.message;
+    } else if (typeof err === "string") {
+      msg = err;
+    } else {
+      try {
+        msg = JSON.stringify(err);
+      } catch {
+        msg = String(err);
+      }
+    }
+    return { error: msg };
   }
 }
 
 export async function signOut() {
+  const { createClient } = await import("@/lib/supabase/server");
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect("/auth/login");

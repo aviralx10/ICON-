@@ -29,15 +29,19 @@ export default function LoginPage() {
       const formData = new FormData();
       formData.set("email", email);
 
-      const result = await signInWithEmail(formData);
+      const result = await signInWithEmail(formData) as { error?: string; success?: boolean };
+      console.log("signInWithEmail result:", JSON.stringify(result));
 
       if (result.error) {
-        setError(result.error);
-      } else {
+        setError(typeof result.error === "string" ? result.error : JSON.stringify(result.error));
+      } else if (result.success) {
         setSuccess(true);
+      } else {
+        setError("Unexpected response from server: " + JSON.stringify(result));
       }
     } catch (err) {
-      setError("Something went wrong. Please try again.");
+      console.error("signInWithEmail threw:", err);
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
