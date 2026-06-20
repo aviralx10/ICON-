@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithEmail } from "@/app/auth/actions";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,21 +26,22 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const formData = new FormData();
-      formData.set("email", email);
+      const supabase = createClient();
+      const siteUrl = window.location.origin;
 
-      const result = await signInWithEmail(formData) as { error?: string; success?: boolean };
-      console.log("signInWithEmail result:", JSON.stringify(result));
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${siteUrl}/auth/callback`,
+        },
+      });
 
-      if (result.error) {
-        setError(typeof result.error === "string" ? result.error : JSON.stringify(result.error));
-      } else if (result.success) {
-        setSuccess(true);
+      if (otpError) {
+        setError(otpError.message);
       } else {
-        setError("Unexpected response from server: " + JSON.stringify(result));
+        setSuccess(true);
       }
     } catch (err) {
-      console.error("signInWithEmail threw:", err);
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
