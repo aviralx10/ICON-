@@ -27,13 +27,15 @@ export async function signInWithEmail(formData: FormData) {
     });
 
     if (error) {
-      return { error: error.message };
+      return { error: error.message || error.status?.toString() || JSON.stringify(error) };
     }
 
     return { success: true };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return { error: `Failed to send magic link: ${message}` };
+    if (err instanceof Error) {
+      return { error: `${err.name}: ${err.message}` };
+    }
+    return { error: `Unexpected error: ${JSON.stringify(err)}` };
   }
 }
 
