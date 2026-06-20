@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithEmail } from "@/app/auth/actions";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,18 +26,23 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const formData = new FormData();
-      formData.set("email", email);
+      const supabase = createClient();
+      const siteUrl = window.location.origin;
 
-      const result = await signInWithEmail(formData);
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${siteUrl}/auth/callback`,
+        },
+      });
 
-      if (result.error) {
-        setError(result.error);
+      if (otpError) {
+        setError(otpError.message);
       } else {
         setSuccess(true);
       }
     } catch (err) {
-      setError("Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
